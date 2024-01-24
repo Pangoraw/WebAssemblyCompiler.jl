@@ -856,7 +856,7 @@ function compile_block(ctx::CompilerContext, cfg::Core.Compiler.CFG, phis, idx)
             push!(ctx.body, BinaryenLocalSet(ctx.mod, ctx.varmap[i], _compile(ctx, var)))
         end
     end
-    body = BinaryenBlock(ctx.mod, "body", ctx.body, length(ctx.body), BinaryenTypeAuto())
+    body = BinaryenBlock(ctx.mod, C_NULL, ctx.body, length(ctx.body), BinaryenTypeAuto())
     return body
 end
 

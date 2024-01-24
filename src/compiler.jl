@@ -142,23 +142,8 @@ function compile_method_body(ctx::CompilerContext)
         end
     end
     # Create blocks
-    rblocks = [RelooperAddBlock(relooper, compile_block(ctx, cfg, phis, idx)) for idx in eachindex(cfg.blocks)]
-    # Create branches
-    for (idx, block) in enumerate(cfg.blocks)
-        terminator = code[last(block.stmts)]
-        if isa(terminator, Core.ReturnNode)
-            # return never has any successors, so no branches needed
-        elseif isa(terminator, Core.GotoNode)
-            toblock = block_for_inst(cfg, terminator.label)
-            RelooperAddBranch(rblocks[idx], rblocks[toblock], C_NULL, C_NULL)
-        elseif isa(terminator, Core.GotoIfNot)
-            toblock = block_for_inst(cfg, terminator.dest)
-            RelooperAddBranch(rblocks[idx], rblocks[idx + 1], _compile(ctx, terminator.cond), C_NULL)
-            RelooperAddBranch(rblocks[idx], rblocks[toblock], C_NULL, C_NULL)
-        elseif idx < length(cfg.blocks)
-            RelooperAddBranch(rblocks[idx], rblocks[idx + 1], C_NULL, C_NULL)
-        end
-    end
-    RelooperRenderAndDispose(relooper, rblocks[1], 0)
+    rblocks = [compile_block(ctx, cfg, phis, idx) for idx in eachindex(cfg.blocks)]
+    # Reloop blocks
+    Relooper.reloop(ctx, rblocks, cfg)
 end
 
