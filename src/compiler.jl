@@ -123,22 +123,39 @@ function compile_method_body(ctx::CompilerContext)
     cfg = Core.Compiler.compute_basic_blocks(code)
     relooper = RelooperCreate(ctx.mod)
 
-    # Find and collect phis
+    # Find and collect phis and phics
     phis = Dict{Int, Any}()
     for (idx, block) in enumerate(cfg.blocks)
         for stmt in block.stmts
             node = code[stmt]
-            !isa(node, Core.PhiNode) && break
-            for (i, edge) in enumerate(node.edges)
-                blocknum = block_for_inst(cfg, Int(edge))
-                if !haskey(phis, blocknum)
-                    phis[blocknum] = Pair{Int64, Any}[]
+
+            if isa(node, Core.PhiCNode)
+                loc = ctx.varmap[stmt] = ctx.localidx
+                push!(ctx.locals, gettype(ctx, ctx.ci.ssavaluetypes[stmt]))
+
+                for Υ in node.values
+                    @assert Υ isa Core.SSAValue
+                    @assert ctx.ci.code[Υ.id] isa Core.UpsilonNode
+
+                    # Upsilon nodes share the same local as their underlying phic node
+                    ctx.varmap[Υ.id] = loc
                 end
-                push!(phis[blocknum], stmt => node.values[i])
+
+                ctx.localidx += 1
             end
-            ctx.varmap[stmt] = ctx.localidx
-            push!(ctx.locals, gettype(ctx, ctx.ci.ssavaluetypes[stmt]))
-            ctx.localidx += 1
+
+            if isa(node, Core.PhiNode)
+                for (i, edge) in enumerate(node.edges)
+                    blocknum = block_for_inst(cfg, Int(edge))
+                    if !haskey(phis, blocknum)
+                        phis[blocknum] = Pair{Int64, Any}[]
+                    end
+                    push!(phis[blocknum], stmt => node.values[i])
+                end
+                ctx.varmap[stmt] = ctx.localidx
+                push!(ctx.locals, gettype(ctx, ctx.ci.ssavaluetypes[stmt]))
+                ctx.localidx += 1
+            end
         end
     end
     # Create blocks

@@ -795,6 +795,13 @@ function compile_block(ctx::CompilerContext, cfg::Core.Compiler.CFG, phis, idx)
             set = ssarettype != Nothing && (ssarettype != Any || ssarettype == newci.rettype)
             setlocal!(ctx, idx, BinaryenCall(ctx.mod, name, args, length(args), wrettype); set, drop)
 
+        elseif node isa Expr && node.head == :call && node.args[1] isa GlobalRef && node.args[1].name == :throw
+
+            if BinaryenGetTag(ctx.mod, "jl_exception_tag") == C_NULL
+                BinaryenAddTag(ctx.mod, "jl_exception_tag", BinaryenTypeNone(), BinaryenTypeNone())
+            end
+            update!(ctx, BinaryenThrow(ctx.mod, "jl_exception_tag", C_NULL, 0))
+
         elseif node isa Expr && node.head == :call && node.args[1] isa GlobalRef && node.args[1].name == :isa    # val isa T
             T = node.args[3]
             wT = gettype(ctx, T)   # do I need heap type here?
@@ -839,7 +846,15 @@ function compile_block(ctx::CompilerContext, cfg::Core.Compiler.CFG, phis, idx)
 
         elseif node isa GlobalRef
             setlocal!(ctx, idx, getglobal(ctx, node.mod, node.name))
-            
+
+        elseif node isa Core.UpsilonNode
+
+            setlocal!(ctx, idx, _compile(ctx, node.val))
+
+        elseif node isa Core.PhiCNode
+
+            # value is already set from UpsilonNode
+
         elseif node isa Expr
             # ignore other expressions for now
             # println("----------------------------------------------------------------")
