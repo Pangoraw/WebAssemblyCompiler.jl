@@ -10,30 +10,26 @@ function _compile(ctx::CompilerContext, x::Core.Argument; kw...)
     end
     # If at the top level or if it's not a callable struct, 
     # we don't include the fun as the first argument.
-    BinaryenLocalGet(ctx.mod, argmap(ctx, x.n) - 1,
-                     gettype(ctx, type))
+    WasmCompiler.InstOperands(WasmCompiler.local_get(1 + argmap(ctx, x.n)), [])
 end
 function _compile(ctx::CompilerContext, x::Core.SSAValue; kw...)   # These come after the function arguments.
     bt = basetype(ctx, x)
     if Base.issingletontype(bt)
         getglobal(ctx, _compile(ctx, nothing))
     else
-        BinaryenLocalGet(ctx.mod, ctx.varmap[x.id],
-                         gettype(ctx, ssatype(ctx, x.id)))
+        InstOperands(WC.local_get(1 + ctx.varmap[x.id]), [])
     end
-    # localid = ctx.varmap[x.id]
-    # BinaryenLocalGet(ctx.mod, localid, ctx.locals[localid])
 end
-_compile(ctx::CompilerContext, x::Float64; kw...) = BinaryenConst(ctx.mod, BinaryenLiteralFloat64(x))
-_compile(ctx::CompilerContext, x::Float32; kw...) = BinaryenConst(ctx.mod, BinaryenLiteralFloat32(x))
-_compile(ctx::CompilerContext, x::Int64; kw...) = BinaryenConst(ctx.mod, BinaryenLiteralInt64(x))
-_compile(ctx::CompilerContext, x::Int32; kw...) = BinaryenConst(ctx.mod, BinaryenLiteralInt32(x))
-_compile(ctx::CompilerContext, x::UInt8; kw...) = BinaryenConst(ctx.mod, BinaryenLiteralInt32(x))
-_compile(ctx::CompilerContext, x::Int8; kw...) = BinaryenConst(ctx.mod, BinaryenLiteralInt32(x))
-_compile(ctx::CompilerContext, x::UInt64; kw...) = BinaryenConst(ctx.mod, BinaryenLiteralInt64(reinterpret(Int64, x)))
-_compile(ctx::CompilerContext, x::UInt32; kw...) = BinaryenConst(ctx.mod, BinaryenLiteralInt32(reinterpret(Int32, x)))
-_compile(ctx::CompilerContext, x::Bool; kw...) = BinaryenConst(ctx.mod, BinaryenLiteralInt32(x))
-_compile(ctx::CompilerContext, x::Ptr{BinaryenExpression}; kw...) = x
+_compile(ctx::CompilerContext, x::Float64; kw...) = InstOperands(WC.f64_const(x), [])
+_compile(ctx::CompilerContext, x::Float32; kw...) = InstOperands(WC.f32_const(x), [])
+_compile(ctx::CompilerContext, x::Int64; kw...) = InstOperands(WC.i64_const(x), [])
+_compile(ctx::CompilerContext, x::Int32; kw...) = InstOperands(WC.i32_const(x), [])
+_compile(ctx::CompilerContext, x::UInt8; kw...) = InstOperands(WC.i32_const(x), [])
+_compile(ctx::CompilerContext, x::Int8; kw...) = InstOperands(WC.i32_const(x), [])
+_compile(ctx::CompilerContext, x::UInt64; kw...) = InstOperands(WC.i64_const(reinterpret(Int64, x)), [])
+_compile(ctx::CompilerContext, x::UInt32; kw...) = InstOperands(WC.i32_const(reinterpret(Int32, x)), [])
+_compile(ctx::CompilerContext, x::Bool; kw...) = InstOperands(WC.i32_const(x), [])
+# _compile(ctx::CompilerContext, x::Ptr{BinaryenExpression}; kw...) = x
 _compile(ctx::CompilerContext, x::GlobalRef; kw...) = getglobal(ctx, x.mod, x.name)
 _compile(ctx::CompilerContext, x::QuoteNode; kw...) = _compile(ctx, x.value)
 # _compile(ctx::CompilerContext, x::String; globals = false, kw...) = globals ?

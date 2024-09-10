@@ -136,8 +136,13 @@ function gettype(ctx, type)
     end
     # exit()
     if type <: Type
-        return BinaryenTypeInt32()
+        return i32
     end
+
+    if type <: Function
+      return i32
+    end
+
     tb = TypeBuilderCreate(1)
     builtheaptypes = Array{BinaryenHeapType}(undef, 1)
     
@@ -160,6 +165,7 @@ function gettype(ctx, type)
     #     BinaryenModuleSetTypeName(ctx.mod, builtheaptypes[1], string(type))
     # end
     # BinaryenExpressionPrint( BinaryenLocalSet(ctx.mod, 100, BinaryenLocalGet(ctx.mod, 99, newtype)))
+    @show type
     ctx.wtypes[type] = newtype
     return newtype
 end

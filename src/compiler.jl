@@ -29,9 +29,11 @@ function compile(funs::Tuple...; filepath = "foo.wasm", jspath = filepath * ".js
     dummyci = code_typed(() -> nothing, Tuple{})[1].first
     ctx = CompilerContext(dummyci; experimental)
     debug(:offline) && _debug_ci(ctx)
+
     # BinaryenModuleSetFeatures(ctx.mod, BinaryenFeatureReferenceTypes() | BinaryenFeatureGC() | (experimental ? BinaryenFeatureStrings() : 0))
-    BinaryenModuleSetFeatures(ctx.mod, BinaryenFeatureAll())
-    BinaryenModuleAutoDrop(ctx.mod)
+    # BinaryenModuleSetFeatures(ctx.mod, BinaryenFeatureAll())
+    # BinaryenModuleAutoDrop(ctx.mod) # TODO
+
     # Create CodeInfo's, and fill in names first
     for (i, funtpl) in enumerate(funs)
         tt = length(funtpl) > 1 ? Base.to_tuple_type(funtpl[2:end]) : Tuple{}
@@ -57,21 +59,24 @@ function compile(funs::Tuple...; filepath = "foo.wasm", jspath = filepath * ".js
         debug(:offline) && _debug_ci(newctx, ctx)
         compile_method(newctx, name, exported = true)
     end
-    BinaryenModuleAutoDrop(ctx.mod)
-    debug(:offline) && _debug_module(ctx)
-    debug(:inline) && BinaryenModulePrint(ctx.mod)
-    validate && BinaryenModuleValidate(ctx.mod)
+    # BinaryenModuleAutoDrop(ctx.mod)
+    # debug(:offline) && _debug_module(ctx)
+    # debug(:inline) && BinaryenModulePrint(ctx.mod)
+    display(WC.Wat(ctx.mod, false))
+    validate && WC.validate(ctx.mod)
     # BinaryenSetShrinkLevel(0)
     # BinaryenSetOptimizeLevel(2)
-    optimize && BinaryenModuleOptimize(ctx.mod)
+    optimize && (ctx.mod = WC.optimize(ctx.mod))
 
-    out = BinaryenModuleAllocateAndWrite(ctx.mod, C_NULL)
-    write(filepath, unsafe_wrap(Vector{UInt8}, Ptr{UInt8}(out.binary), (out.binaryBytes,)))
-    Libc.free(out.binary)
-    out = BinaryenModuleAllocateAndWriteText(ctx.mod)
-    write(filepath * ".wat", unsafe_string(out))
-    Libc.free(out)
-    BinaryenModuleDispose(ctx.mod)
+    # out = BinaryenModuleAllocateAndWrite(ctx.mod, C_NULL)
+    # write(filepath, unsafe_wrap(Vector{UInt8}, Ptr{UInt8}(out.binary), (out.binaryBytes,)))
+    # Libc.free(out.binary)
+    # out = BinaryenModuleAllocateAndWriteText(ctx.mod)
+    # write(filepath * ".wat", unsafe_string(out))
+    # Libc.free(out)
+    # BinaryenModuleDispose(ctx.mod)
+    open(io -> WC.wwrite(io, ctx.mod), filepath, "w")
+
     jstext = "var jsexports = { js: {} };\n"
     imports = unique(values(ctx.imports))
     jstext *= join(["jsexports['js']['$v'] = $v;" for v in imports], "\n")
@@ -92,23 +97,22 @@ function compile_method(ctx::CompilerContext, funname; sig = ctx.ci.parent.specT
     # funname = ctx.names[sig]
     sigparams = collect(sig.parameters)
     jparams = [gettype(ctx, sigparams[1]), (gettype(ctx, sigparams[i]) for i in 2:length(sigparams) if argused(ctx, i))...]
-    if ctx.toplevel || !callablestruct(ctx)
-        jparams = jparams[2:end]
-    end
+    # if ctx.toplevel || !callablestruct(ctx)
+    #     jparams = jparams[2:end]
+    # end
 
-    bparams = BinaryenTypeCreate(jparams, length(jparams))
-    rettype = gettype(ctx, ctx.ci.rettype == Nothing ? Union{} : ctx.ci.rettype)
-    body = compile_method_body(ctx)
-    debug(:inline) && println("---------------------------------------")
-    debug(:inline) && @show ctx.ci.parent.def.name
-    debug(:inline) && @show ctx.ci.parent.def
-    debug(:inline) && @show ctx.ci
-    debug(:inline) && @show ctx.ci.parent.def.name
-    debug(:inline) && BinaryenExpressionPrint(body)
-    if BinaryenGetFunction(ctx.mod, funname) == C_NULL
-        BinaryenAddFunction(ctx.mod, funname, bparams, rettype, ctx.locals, length(ctx.locals), body)
+    ircode, _ = Base.code_ircode_by_type(sig) |> only
+
+    body = compile_method_body(ctx, ircode)
+    functype = WasmCompiler.FuncType(jparams, ctx.ci.rettype == Nothing ? [] : [gettype(ctx, ctx.ci.rettype)])
+    if !any(f -> f.name == funname, ctx.mod.funcs)
+        push!(
+            ctx.mod.funcs,
+            WC.Func(funname, functype, [functype.params..., ctx.locals...], body)
+        )
         if exported
-            BinaryenAddFunctionExport(ctx.mod, funname, funname)
+            num_exports = count(exp -> exp isa WC.FuncExport, ctx.mod.exports)
+            push!(ctx.mod.exports, WC.FuncExport(funname, num_exports + length(ctx.mod.funcs)))
         end
     end
     return nothing
@@ -116,12 +120,12 @@ end
 
 import Core.Compiler: block_for_inst, compute_basic_blocks
 
-function compile_method_body(ctx::CompilerContext)
+function compile_method_body(ctx::CompilerContext, ircode)
     ci = ctx.ci
     code = ci.code
     ctx.localidx += nargs(ctx)
-    cfg = Core.Compiler.compute_basic_blocks(code)
-    relooper = RelooperCreate(ctx.mod)
+    # cfg = Core.Compiler.compute_basic_blocks(code)
+    cfg = ircode.cfg
 
     # Find and collect phis
     phis = Dict{Int, Any}()
@@ -142,23 +146,26 @@ function compile_method_body(ctx::CompilerContext)
         end
     end
     # Create blocks
-    rblocks = [RelooperAddBlock(relooper, compile_block(ctx, cfg, phis, idx)) for idx in eachindex(cfg.blocks)]
-    # Create branches
-    for (idx, block) in enumerate(cfg.blocks)
-        terminator = code[last(block.stmts)]
-        if isa(terminator, Core.ReturnNode)
-            # return never has any successors, so no branches needed
-        elseif isa(terminator, Core.GotoNode)
-            toblock = block_for_inst(cfg, terminator.label)
-            RelooperAddBranch(rblocks[idx], rblocks[toblock], C_NULL, C_NULL)
-        elseif isa(terminator, Core.GotoIfNot)
-            toblock = block_for_inst(cfg, terminator.dest)
-            RelooperAddBranch(rblocks[idx], rblocks[idx + 1], _compile(ctx, terminator.cond), C_NULL)
-            RelooperAddBranch(rblocks[idx], rblocks[toblock], C_NULL, C_NULL)
-        elseif idx < length(cfg.blocks)
-            RelooperAddBranch(rblocks[idx], rblocks[idx + 1], C_NULL, C_NULL)
-        end
-    end
-    RelooperRenderAndDispose(relooper, rblocks[1], 0)
+    rblocks = [
+        compile_block(ctx, cfg, phis, idx) for idx in eachindex(cfg.blocks)
+    ]
+    # # Create branches
+    # for (idx, block) in enumerate(cfg.blocks)
+    #     terminator = code[last(block.stmts)]
+    #     if isa(terminator, Core.ReturnNode)
+    #         # return never has any successors, so no branches needed
+    #     elseif isa(terminator, Core.GotoNode)
+    #         toblock = block_for_inst(cfg, terminator.label)
+    #         RelooperAddBranch(rblocks[idx], rblocks[toblock], C_NULL, C_NULL)
+    #     elseif isa(terminator, Core.GotoIfNot)
+    #         toblock = block_for_inst(cfg, terminator.dest)
+    #         RelooperAddBranch(rblocks[idx], rblocks[idx + 1], _compile(ctx, terminator.cond), C_NULL)
+    #         RelooperAddBranch(rblocks[idx], rblocks[toblock], C_NULL, C_NULL)
+    #     elseif idx < length(cfg.blocks)
+    #         RelooperAddBranch(rblocks[idx], rblocks[idx + 1], C_NULL, C_NULL)
+    #     end
+    # end
+    # RelooperRenderAndDispose(relooper, rblocks[1], 0)
+    WasmCompiler.reloop(rblocks, ircode)
 end
 

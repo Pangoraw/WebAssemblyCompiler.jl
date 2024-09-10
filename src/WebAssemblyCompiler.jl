@@ -1,6 +1,7 @@
 module WebAssemblyCompiler
 
 using Binaryen_jll
+using WasmCompiler
 
 include("../lib/LibBinaryen.jl")
 using .LibBinaryen
