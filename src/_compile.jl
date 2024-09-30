@@ -17,7 +17,7 @@ function _compile(ctx::CompilerContext, x::Core.SSAValue; kw...)   # These come 
     if Base.issingletontype(bt)
         getglobal(ctx, _compile(ctx, nothing))
     else
-        InstOperands(WC.local_get(1 + ctx.varmap[x.id]), [])
+        InstOperands(WC.local_get(2 + ctx.varmap[x.id]), [])
     end
 end
 _compile(ctx::CompilerContext, x::Float64; kw...) = InstOperands(WC.f64_const(x), [])

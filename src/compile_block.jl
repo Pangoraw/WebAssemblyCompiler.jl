@@ -22,7 +22,7 @@ function setlocal!(ctx, idx, x; set=true, drop=false)
     T = ssatype(ctx, idx)
     if T != Union{} && set  # && T != Nothing && set # && T != Any
         ctx.varmap[idx] = ctx.localidx
-        x = WasmCompiler.InstOperands(WasmCompiler.local_set(ctx.localidx + 1), [x])
+        x = WasmCompiler.InstOperands(WasmCompiler.local_set(2 + ctx.localidx), [x])
         update!(ctx, x, T)
     else
         if drop
@@ -398,7 +398,7 @@ function compile_block(ctx::CompilerContext, cfg::Core.Compiler.CFG, phis, idx)
         end
 
         elseif matchgr(node, :ifelse) do cond, a, b
-            x = InstOperands(WC.select(), [_compile(ctx, cond), _compile(ctx, a), _compile(ctx, b)])
+            x = InstOperands(WC.select(), [_compile(ctx, a), _compile(ctx, b), _compile(ctx, cond)])
             setlocal!(ctx, idx, x)
         end
 
@@ -844,7 +844,7 @@ function compile_block(ctx::CompilerContext, cfg::Core.Compiler.CFG, phis, idx)
     end
     if haskey(phis, idx)
         for (i, var) in phis[idx]
-            push!(ctx.body, InstOperands(WC.local_set(ctx.varmap[i]), [_compile(ctx, var)]))
+            push!(ctx.body, InstOperands(WC.local_set(1 + ctx.varmap[i]), [_compile(ctx, var)]))
         end
     end
     # body = BinaryenBlock(ctx.mod, "body", ctx.body, length(ctx.body), BinaryenTypeAuto())
