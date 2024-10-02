@@ -66,7 +66,9 @@ function compile(funs::Tuple...; filepath = "foo.wasm", jspath = filepath * ".js
     validate && WC.validate(ctx.mod)
     # BinaryenSetShrinkLevel(0)
     # BinaryenSetOptimizeLevel(2)
+    OPT_LEVEL = 1 # 2 # not sure about lvl 2 yet
     optimize && (ctx.mod = WC.optimize(ctx.mod))
+    display(WC.Wat(ctx.mod, false))
 
     # out = BinaryenModuleAllocateAndWrite(ctx.mod, C_NULL)
     # write(filepath, unsafe_wrap(Vector{UInt8}, Ptr{UInt8}(out.binary), (out.binaryBytes,)))
@@ -145,27 +147,14 @@ function compile_method_body(ctx::CompilerContext, ircode)
             ctx.localidx += 1
         end
     end
-    # Create blocks
+
+    # Emit code for each block
     rblocks = [
-        compile_block(ctx, cfg, phis, idx) for idx in eachindex(cfg.blocks)
+        compile_block(ctx, cfg, phis, idx)
+        for idx in eachindex(cfg.blocks)
     ]
-    # # Create branches
-    # for (idx, block) in enumerate(cfg.blocks)
-    #     terminator = code[last(block.stmts)]
-    #     if isa(terminator, Core.ReturnNode)
-    #         # return never has any successors, so no branches needed
-    #     elseif isa(terminator, Core.GotoNode)
-    #         toblock = block_for_inst(cfg, terminator.label)
-    #         RelooperAddBranch(rblocks[idx], rblocks[toblock], C_NULL, C_NULL)
-    #     elseif isa(terminator, Core.GotoIfNot)
-    #         toblock = block_for_inst(cfg, terminator.dest)
-    #         RelooperAddBranch(rblocks[idx], rblocks[idx + 1], _compile(ctx, terminator.cond), C_NULL)
-    #         RelooperAddBranch(rblocks[idx], rblocks[toblock], C_NULL, C_NULL)
-    #     elseif idx < length(cfg.blocks)
-    #         RelooperAddBranch(rblocks[idx], rblocks[idx + 1], C_NULL, C_NULL)
-    #     end
-    # end
-    # RelooperRenderAndDispose(relooper, rblocks[1], 0)
+
+    # Handle control flow
     WasmCompiler.reloop(rblocks, ircode)
 end
 

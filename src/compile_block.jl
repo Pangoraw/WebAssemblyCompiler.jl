@@ -64,12 +64,18 @@ function compile_block(ctx::CompilerContext, cfg::Core.Compiler.CFG, phis, idx)
     idxs = cfg.blocks[idx].stmts
     ci = ctx.ci
     ctx.body = WC.InstOperands[]
+
+    cond_val = nothing
+
     for idx in idxs
         node = ci.code[idx]
         debug(:inline) && @show idx node ssatype(ctx, idx)
         debug(:offline) && _debug_line(ctx, idx, node)
 
-        if node isa Union{Core.GotoNode,Core.GotoIfNot,Core.PhiNode,Nothing}
+        if node isa Core.GotoIfNot
+            cond_val = _compile(ctx, node.cond)
+      
+        elseif node isa Union{Core.GotoNode,Core.PhiNode,Nothing}
             # do nothing
 
         elseif node == Core.ReturnNode()
@@ -847,7 +853,12 @@ function compile_block(ctx::CompilerContext, cfg::Core.Compiler.CFG, phis, idx)
             push!(ctx.body, InstOperands(WC.local_set(ctx.varmap[i]), [_compile(ctx, var)]))
         end
     end
+
+    # put cond val on the stack
+    isnothing(cond_val) || push!(ctx.body, cond_val) 
+
     # body = BinaryenBlock(ctx.mod, "body", ctx.body, length(ctx.body), BinaryenTypeAuto())
-    return WC.flatten(ctx.body)
+    expr = WC.flatten(ctx.body)
+    return expr
 end
 
