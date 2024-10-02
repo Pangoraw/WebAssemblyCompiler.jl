@@ -1,6 +1,6 @@
 # Return the argument that function matches with the n'th slottype.
 # Unused arguments are skipped. 
-# If the 1st and 4th arguments are unused, argmap(3) == 2 and argmap(6) == 4.
+# If the 1st and 4th arguments are unused, argmap(3) == 3 and argmap(6) == 5.
 function argmap(ctx, n)
     used = argsused(ctx)
     result = sum(used[1:n])

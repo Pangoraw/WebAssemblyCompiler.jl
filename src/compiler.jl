@@ -97,9 +97,9 @@ function compile_method(ctx::CompilerContext, funname; sig = ctx.ci.parent.specT
     # funname = ctx.names[sig]
     sigparams = collect(sig.parameters)
     jparams = [gettype(ctx, sigparams[1]), (gettype(ctx, sigparams[i]) for i in 2:length(sigparams) if argused(ctx, i))...]
-    # if ctx.toplevel || !callablestruct(ctx)
-    #     jparams = jparams[2:end]
-    # end
+    if ctx.toplevel || !callablestruct(ctx)
+        jparams = jparams[2:end]
+    end
 
     ircode, _ = Base.code_ircode_by_type(sig) |> only
 

@@ -82,9 +82,9 @@ const wat = raw"""
 CompilerContext(ci::Core.CodeInfo; experimental = false) = begin
     @assert !experimental
     CompilerContext(Module(), Dict{DataType, String}(), Dict{String, DataType}(), Dict{String, Any}(), wtypes(), IdDict{Any, Any}(), IdDict{Any, Any}(),
-                    ci, [], [], 0, Dict{Int, Int}(), true, nothing, Dict{Symbol, Any}())
+                    ci, [], [], 1, Dict{Int, Int}(), true, nothing, Dict{Symbol, Any}())
 end
-CompilerContext(ctx::CompilerContext, ci::Core.CodeInfo; toplevel = false) = 
+CompilerContext(ctx::CompilerContext, ci::Core.CodeInfo; toplevel = false) =
     CompilerContext(ctx.mod, ctx.names, ctx.sigs, ctx.imports, ctx.wtypes, ctx.globals, ctx.objects,
-                    ci, [], [], 0, Dict{Int, Int}(), toplevel, nothing, Dict{Symbol, Any}())
+                    ci, [], [], 1, Dict{Int, Int}(), toplevel, nothing, Dict{Symbol, Any}())
 

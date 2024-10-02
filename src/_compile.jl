@@ -10,14 +10,14 @@ function _compile(ctx::CompilerContext, x::Core.Argument; kw...)
     end
     # If at the top level or if it's not a callable struct, 
     # we don't include the fun as the first argument.
-    WasmCompiler.InstOperands(WasmCompiler.local_get(1 + argmap(ctx, x.n)), [])
+    WasmCompiler.InstOperands(WasmCompiler.local_get(argmap(ctx, x.n)), [])
 end
 function _compile(ctx::CompilerContext, x::Core.SSAValue; kw...)   # These come after the function arguments.
     bt = basetype(ctx, x)
     if Base.issingletontype(bt)
         getglobal(ctx, _compile(ctx, nothing))
     else
-        InstOperands(WC.local_get(2 + ctx.varmap[x.id]), [])
+        InstOperands(WC.local_get(ctx.varmap[x.id]), [])
     end
 end
 _compile(ctx::CompilerContext, x::Float64; kw...) = InstOperands(WC.f64_const(x), [])
